@@ -1,0 +1,43 @@
+# The API server plus three workers, one image, one shared volume holding the SQLite file.
+# Kill a worker mid-run (docker compose kill worker-2) and its leased tasks move to the
+# others once the lease expires.
+x-common: &common
+  build: .
+  image: durableflow:local
+  restart: unless-stopped
+  volumes:
+    - flow-data:/data
+  environment: &env
+    DURABLEFLOW_DB: /data/durableflow.db
+    DURABLEFLOW_LOG_LEVEL: INFO
+
+services:
+  server:
+    <<: *common
+    command: ["server"]
+    ports:
+      - "8000:8000"
+
+  worker-1:
+    <<: *common
+    command: ["worker", "--id", "worker-1"]
+    depends_on:
+      server:
+        condition: service_healthy
+
+  worker-2:
+    <<: *common
+    command: ["worker", "--id", "worker-2"]
+    depends_on:
+      server:
+        condition: service_healthy
+
+  worker-3:
+    <<: *common
+    command: ["worker", "--id", "worker-3"]
+    depends_on:
+      server:
+        condition: service_healthy
+
+volumes:
+  flow-data:

@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>durable-flow</title>
+<style>
+:root {
+  --bg: #f6f6f3; --panel: #ffffff; --ink: #1c1c1a; --muted: #6a6a64; --line: #e3e2dc;
+  --soft: #f0efea;
+  --wf: #4a4a46; --act: #2f6fb3; --timer: #b7791f; --signal: #7b4bb3; --child: #1f8a86;
+  --bad: #c0392b; --good: #2e8b57; --marker: #5b7f2a;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #151514; --panel: #1e1e1c; --ink: #ecebe6; --muted: #9b9a94; --line: #34332f;
+    --soft: #262623;
+    --wf: #b9b8b1; --act: #6ea8e6; --timer: #e6b04a; --signal: #b38ae6; --child: #4fc2bc;
+    --bad: #ec7a6d; --good: #5cc48a; --marker: #a3c96a;
+  }
+}
+* { box-sizing: border-box; }
+html, body { overflow-x: hidden; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: var(--act); text-decoration: none; }
+a:hover { text-decoration: underline; }
+header { padding: 18px 24px 6px; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; }
+header h1 { font-size: 20px; margin: 0; }
+header h1 a { color: var(--ink); }
+header p { margin: 0; color: var(--muted); }
+header .now { margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+main { padding: 8px 24px 40px; display: grid; gap: 16px; max-width: 1200px; min-width: 0; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; min-width: 0; }
+.panel h2 { font-size: 15px; margin: 0 0 12px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+input, select, textarea, button { font: inherit; color: var(--ink); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; max-width: 100%; }
+button { cursor: pointer; background: var(--soft); }
+button.primary { background: var(--act); border-color: var(--act); color: #fff; }
+button.danger { color: var(--bad); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+textarea { width: 100%; min-height: 64px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { border: 1px solid var(--line); border-radius: 999px; padding: 4px 11px; cursor: pointer; background: var(--panel);
+  font-size: 13px; display: inline-flex; gap: 6px; align-items: center; }
+.chip.on { border-color: var(--ink); }
+.chip b { font-variant-numeric: tabular-nums; }
+.badge { display: inline-block; border-radius: 4px; padding: 1px 7px; font-size: 11px; font-weight: 600;
+  letter-spacing: .02em; border: 1px solid currentColor; white-space: nowrap; }
+.s-RUNNING { color: var(--act); } .s-COMPLETED { color: var(--good); } .s-COMPENSATED { color: var(--timer); }
+.s-FAILED { color: var(--bad); } .s-TERMINATED { color: var(--muted); } .s-CONTINUED_AS_NEW { color: var(--child); }
+.wl { display: grid; }
+.wl .item { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.3fr) 110px minmax(0, 2fr) 70px;
+  gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--line); align-items: center; }
+.wl .head { color: var(--muted); font-size: 12px; }
+.wl .item > * { min-width: 0; overflow-wrap: anywhere; }
+.muted { color: var(--muted); }
+.num { font-variant-numeric: tabular-nums; text-align: right; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px 16px; }
+.facts .k { color: var(--muted); font-size: 12px; }
+.facts .v { overflow-wrap: anywhere; }
+.grid2 { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
+.title { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.title h2 { margin: 0; font-size: 18px; overflow-wrap: anywhere; min-width: 0; }
+/* timeline */
+.tl { list-style: none; margin: 0; padding: 0; position: relative; }
+.tl::before { content: ""; position: absolute; left: 7px; top: 4px; bottom: 4px; width: 2px; background: var(--line); }
+.ev { position: relative; padding: 4px 0 10px 28px; min-width: 0; }
+.ev .dot { position: absolute; left: 1px; top: 8px; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--panel); border: 3px solid var(--c, var(--wf)); }
+.ev.res .dot { background: var(--c, var(--wf)); }
+.ev .line1 { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.ev .type { font-weight: 600; color: var(--c, var(--wf)); }
+.ev .meta { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.ev .sum { overflow-wrap: anywhere; font-size: 13px; }
+.ev pre { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; color: var(--muted);
+  background: var(--soft); border-radius: 6px; padding: 6px 8px; }
+.gap { position: relative; padding: 2px 0 12px 28px; color: var(--muted); font-size: 12px; font-style: italic; }
+.gap::before { content: ""; position: absolute; left: 4px; top: -2px; height: 22px; width: 8px;
+  border-left: 2px dashed var(--muted); border-right: 0; background: var(--bg); }
+.c-wf { --c: var(--wf); } .c-act { --c: var(--act); } .c-timer { --c: var(--timer); }
+.c-signal { --c: var(--signal); } .c-child { --c: var(--child); } .c-bad { --c: var(--bad); }
+.c-marker { --c: var(--marker); } .c-good { --c: var(--good); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+.legend .note::before { display: none; }
+.legend span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--c); margin-right: 5px; }
+.pending li, .effects li { margin: 4px 0; overflow-wrap: anywhere; }
+.pending, .effects { margin: 0; padding-left: 18px; }
+.msg { font-size: 12px; margin-top: 6px; min-height: 16px; }
+.stack { display: grid; gap: 16px; min-width: 0; }
+@media (max-width: 860px) {
+  .grid2 { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  header, main { padding-left: 16px; padding-right: 16px; }
+  .wl .head { display: none; }
+  .wl .item { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; }
+  .wl .item .type, .wl .item .stage { grid-column: 1 / -1; }
+  .wl .item .evn { display: none; }
+  header .now { margin-left: 0; width: 100%; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="#/">durable-flow</a></h1>
+  <p>Kestrel Supply Co. workflows, replayed from event history</p>
+  <span class="now" id="now"></span>
+</header>
+<main id="app"></main>
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const STATUSES = ["RUNNING", "COMPLETED", "COMPENSATED", "FAILED", "TERMINATED"];
+let timer = null;
+
+function fmtTime(t) {
+  if (t == null) return "";
+  const d = new Date(t * 1000);
+  return d.toISOString().slice(0, 16).replace("T", " ");
+}
+function fmtDur(s) {
+  s = Math.max(0, s);
+  if (s < 1) return "+" + Math.round(s * 1000) + "ms";
+  if (s < 60) return "+" + s.toFixed(s < 10 ? 1 : 0) + "s";
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  if (d) return `+${d}d ${h}h`;
+  if (h) return `+${h}h ${m}m`;
+  return `+${m}m ${Math.floor(s % 60)}s`;
+}
+function gapText(s) {
+  const d = s / 86400;
+  if (d >= 1) return `${d >= 10 ? Math.round(d) : d.toFixed(1)} days pass`;
+  const h = s / 3600;
+  if (h >= 1) return `${h.toFixed(1)} hours pass`;
+  return `${Math.round(s / 60)} minutes pass`;
+}
+const badge = (s) => `<span class="badge s-${esc(s)}">${esc(s.replace(/_/g, " ").toLowerCase())}</span>`;
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.detail || r.statusText);
+  return body;
+}
+function short(v, n = 90) {
+  const s = typeof v === "string" ? v : JSON.stringify(v);
+  return s && s.length > n ? s.slice(0, n - 1) + "..." : s;
+}
+
+// ---------------------------------------------------------------- list view
+async function renderList(params) {
+  const q = new URLSearchParams(params);
+  if (!q.has("limit")) q.set("limit", "100");
+  const data = await api("/api/workflows?" + q.toString());
+  $("#now").textContent = "engine time " + fmtTime(data.now) + " UTC";
+  const sel = params.get("status") || "";
+  const total = Object.values(data.counts).reduce((a, b) => a + b, 0);
+  const chips = [`<span class="chip ${sel ? "" : "on"}" data-status="">all <b>${total}</b></span>`]
+    .concat(STATUSES.filter((s) => data.counts[s]).map((s) =>
+      `<span class="chip ${sel === s ? "on" : ""}" data-status="${s}">${badge(s)} <b>${data.counts[s]}</b></span>`));
+  $("#app").innerHTML = `
+    <section class="panel">
+      <div class="row" style="justify-content: space-between">
+        <div class="chips">${chips.join("")}</div>
+        <div class="row">
+          <select id="type"><option value="">all types</option>
+            ${["employee_onboarding", "order_fulfillment", "subscription_renewal"].map((t) =>
+              `<option ${params.get("type") === t ? "selected" : ""}>${t}</option>`).join("")}</select>
+          <input id="q" placeholder="search id" value="${esc(params.get("q") || "")}" size="14">
+        </div>
+      </div>
+    </section>
+    <section class="panel">
+      <h2>Workflows <span class="muted">(${data.total})</span></h2>
+      <div class="wl">
+        <div class="item head"><div>workflow id</div><div>type</div><div>status</div><div>stage</div><div class="num">events</div></div>
+        ${data.items.map((w) => `
+          <div class="item">
+            <div><a href="#/wf/${encodeURIComponent(w.workflow_id)}">${esc(w.workflow_id)}</a></div>
+            <div class="type muted">${esc(w.workflow_type)}</div>
+            <div>${badge(w.status)}</div>
+            <div class="stage muted">${esc(w.stage || "")}</div>
+            <div class="num evn">${w.history_length}</div>
+          </div>`).join("") || `<p class="muted">No workflows yet. Run <code>durableflow demo</code>.</p>`}
+      </div>
+    </section>`;
+  document.querySelectorAll(".chip").forEach((c) => c.onclick = () => {
+    const p = new URLSearchParams(params); c.dataset.status ? p.set("status", c.dataset.status) : p.delete("status");
+    location.hash = "#/?" + p.toString();
+  });
+  $("#type").onchange = (e) => { const p = new URLSearchParams(params); e.target.value ? p.set("type", e.target.value) : p.delete("type"); location.hash = "#/?" + p.toString(); };
+  $("#q").onchange = (e) => { const p = new URLSearchParams(params); e.target.value ? p.set("q", e.target.value) : p.delete("q"); location.hash = "#/?" + p.toString(); };
+}
+
+// ---------------------------------------------------------------- detail view
+const CAT = {
+  WorkflowStarted: "wf", WorkflowCompleted: "good", WorkflowCompensated: "timer", WorkflowFailed: "bad",
+  WorkflowTaskFailed: "bad", WorkflowTerminated: "bad", WorkflowContinuedAsNew: "child",
+  ActivityScheduled: "act", ActivityCompleted: "act", ActivityFailed: "bad",
+  TimerStarted: "timer", TimerFired: "timer", SignalWaitStarted: "signal", SignalReceived: "signal",
+  SignalWaitTimedOut: "bad", ChildStarted: "child", ChildCompleted: "child", ChildFailed: "bad",
+  VersionMarker: "marker",
+};
+const RESOLUTION = new Set(["ActivityCompleted", "ActivityFailed", "TimerFired", "SignalReceived",
+  "SignalWaitTimedOut", "ChildCompleted", "ChildFailed", "WorkflowCompleted", "WorkflowCompensated",
+  "WorkflowFailed", "WorkflowTaskFailed", "WorkflowTerminated", "WorkflowContinuedAsNew"]);
+
+function summary(e, sched) {
+  const a = e.attrs;
+  const args = (x) => (x.args || []).map((v) => typeof v === "string" ? v : JSON.stringify(v)).join(", ");
+  switch (e.type) {
+    case "WorkflowStarted": return `${a.workflow_type}(${short(a.input, 120)})` + (a.continued_from ? ` continued from ${a.continued_from}` : "");
+    case "ActivityScheduled": return `#${a.cmd} ${a.name}(${esc(args(a))})`;
+    case "ActivityCompleted": return `#${a.cmd} ${a.name} returned ${short(a.result)}` + (a.attempt > 1 ? ` on attempt ${a.attempt}` : "");
+    case "ActivityFailed": return `#${a.cmd} ${a.name}: ${a.error_type}: ${a.message} (${a.attempts} attempt${a.attempts > 1 ? "s" : ""})`;
+    case "TimerStarted": return `#${a.cmd} sleep ${fmtDur(a.seconds).slice(1)}, fires ${fmtTime(a.fire_at)}`;
+    case "TimerFired": return `#${a.cmd} timer fired`;
+    case "SignalWaitStarted": return `#${a.cmd} wait for "${a.name}"` + (a.timeout ? ` up to ${fmtDur(a.timeout).slice(1)}` : "") + (a.buffered ? " (already buffered)" : "");
+    case "SignalReceived": return `"${a.name}" ${short(a.payload)}`;
+    case "SignalWaitTimedOut": return `#${a.cmd} no signal before ${fmtTime(a.fire_at)}`;
+    case "ChildStarted": return `#${a.cmd} <a href="#/wf/${encodeURIComponent(a.child_workflow_id)}">${esc(a.child_workflow_id)}</a>`;
+    case "ChildCompleted": return `#${a.cmd} ${a.workflow_type} completed`;
+    case "ChildFailed": return `#${a.cmd} ${a.workflow_type} ended ${String(a.status).toLowerCase()}`;
+    case "VersionMarker": return `get_version("${a.change_id}") = ${a.version}`;
+    case "WorkflowCompleted": return short(a.result, 140);
+    case "WorkflowCompensated": return a.reason;
+    case "WorkflowContinuedAsNew": return `new run ${a.new_run_id}`;
+    default: return short(a.message || a.reason || a, 140);
+  }
+}
+
+function timeline(events) {
+  if (!events.length) return "";
+  const t0 = events[0].ts;
+  const out = [];
+  let prev = t0;
+  for (const e of events) {
+    const gap = e.ts - prev;
+    if (gap >= 3600) out.push(`<li class="gap">${gapText(gap)}</li>`);
+    prev = e.ts;
+    const cat = CAT[e.type] || "wf";
+    out.push(`<li class="ev c-${cat} ${RESOLUTION.has(e.type) ? "res" : ""}">
+      <span class="dot"></span>
+      <div class="line1"><span class="type">${e.type}</span><span class="meta">#${e.seq} &middot; ${fmtDur(e.ts - t0)} &middot; ${fmtTime(e.ts)}</span></div>
+      <div class="sum">${e.type === "ChildStarted" ? summary(e) : esc(summary(e))}</div>
+    </li>`);
+  }
+  return `<div class="legend">
+      <span style="--c: var(--act)">activity</span><span style="--c: var(--timer)">timer</span>
+      <span style="--c: var(--signal)">signal</span><span style="--c: var(--child)">child / new run</span>
+      <span style="--c: var(--marker)">version</span><span style="--c: var(--bad)">failure</span>
+      <span class="note">hollow = scheduled, filled = resolved</span></div>
+    <ol class="tl">${out.join("")}</ol>`;
+}
+
+async function renderDetail(id, runId) {
+  const d = await api("/api/workflows/" + id.split("/").map(encodeURIComponent).join("/"));
+  const h = await api(`/api/workflows/${id.split("/").map(encodeURIComponent).join("/")}/history` + (runId ? `?run_id=${runId}` : ""));
+  $("#now").textContent = "engine time " + fmtTime(d.now) + " UTC";
+  const waits = d.pending.filter((p) => p.kind === "signal").map((p) => p.name);
+  const pending = d.pending.map((p) => {
+    if (p.kind === "activity") return `<li>activity <b>${esc(p.name)}</b> (#${p.cmd}) since ${fmtTime(p.since)}</li>`;
+    if (p.kind === "timer") return `<li>timer #${p.cmd}, fires ${fmtTime(p.fire_at)} (${fmtDur(p.fire_at - d.now).slice(1)} from now)</li>`;
+    if (p.kind === "signal") return `<li>signal <b>${esc(p.name)}</b> (#${p.cmd})${p.timeout_at ? `, times out ${fmtTime(p.timeout_at)}` : ""}</li>`;
+    return `<li>child <a href="#/wf/${encodeURIComponent(p.child_workflow_id)}">${esc(p.child_workflow_id)}</a></li>`;
+  }).join("");
+  const runs = d.runs.length > 1 ? d.runs.map((r, i) =>
+    `<a href="#/wf/${encodeURIComponent(d.workflow_id)}?run=${r.run_id}">run ${i + 1}</a> ${badge(r.status)} <span class="muted">${r.history_length} events</span>`).join("<br>") : esc(d.run_id);
+  const effects = d.effects.map((e) => `<li><b>${esc(e.system)}</b> ${esc(e.action)} ${esc(e.subject)} <span class="muted">${fmtTime(e.applied_at)}</span></li>`).join("");
+  const children = d.children.map((c) => `<li><a href="#/wf/${encodeURIComponent(c.workflow_id)}">${esc(c.workflow_id)}</a> ${badge(c.status)}</li>`).join("");
+  const parent = d.parent_run_id ? `<a href="#/wf/${encodeURIComponent(d.workflow_id.split("/")[0])}">parent</a>` : "none";
+  $("#app").innerHTML = `
+    <section class="panel">
+      <div class="title"><a href="#/">&larr; all</a><h2>${esc(d.workflow_id)}</h2>${badge(d.status)}</div>
+      <div class="facts" style="margin-top: 12px">
+        <div><div class="k">type</div><div class="v">${esc(d.workflow_type)}</div></div>
+        <div><div class="k">current stage</div><div class="v">${esc(d.stage || "")}</div></div>
+        <div><div class="k">started</div><div class="v">${fmtTime(d.runs[0].started_at)}</div></div>
+        <div><div class="k">closed</div><div class="v">${d.closed_at ? fmtTime(d.closed_at) : "open"}</div></div>
+        <div><div class="k">runs</div><div class="v">${runs}</div></div>
+        <div><div class="k">parent</div><div class="v">${parent}</div></div>
+      </div>
+      ${d.error ? `<p class="s-FAILED" style="overflow-wrap:anywhere">${esc(d.error)}</p>` : ""}
+    </section>
+    <div class="grid2">
+      <section class="panel">
+        <h2>Event history <span class="muted">(${h.events.length} events${runId ? ", run " + esc(runId) : ""})</span></h2>
+        ${timeline(h.events)}
+      </section>
+      <div class="stack">
+        <section class="panel">
+          <h2>Current state</h2>
+          ${pending ? `<ul class="pending">${pending}</ul>` : `<p class="muted">${d.status === "RUNNING" ? "Runnable: a worker will pick it up." : "Closed."}</p>`}
+          ${d.result ? `<pre style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px">${esc(JSON.stringify(d.result, null, 2))}</pre>` : ""}
+        </section>
+        <section class="panel">
+          <h2>Send a signal</h2>
+          <div class="row"><input id="sname" value="${esc(waits[0] || "manager_approval")}" style="flex:1; min-width: 0"></div>
+          <div style="margin-top: 8px"><textarea id="spayload">${esc(JSON.stringify(waits[0] === "manager_approval" || !waits.length ? {approved: true, by: "lee.marsh"} : {}, null, 0))}</textarea></div>
+          <div class="row" style="margin-top: 8px">
+            <button class="primary" id="send" ${d.status !== "RUNNING" ? "disabled" : ""}>Send signal</button>
+            <button class="danger" id="term" ${d.status !== "RUNNING" ? "disabled" : ""}>Terminate</button>
+          </div>
+          <div class="msg muted" id="smsg"></div>
+        </section>
+        ${children ? `<section class="panel"><h2>Child workflows</h2><ul class="effects">${children}</ul></section>` : ""}
+        <section class="panel">
+          <h2>Side effects in external systems</h2>
+          ${effects ? `<ul class="effects">${effects}</ul>` : `<p class="muted">None yet.</p>`}
+        </section>
+      </div>
+    </div>`;
+  $("#send").onclick = async () => {
+    try {
+      const payload = $("#spayload").value.trim() ? JSON.parse($("#spayload").value) : null;
+      const r = await api(`/api/workflows/${id.split("/").map(encodeURIComponent).join("/")}/signal`, {
+        method: "POST", headers: {"content-type": "application/json"},
+        body: JSON.stringify({name: $("#sname").value, payload})});
+      $("#smsg").textContent = `signal recorded as event #${r.seq}`;
+      setTimeout(route, 600);
+    } catch (err) { $("#smsg").textContent = "error: " + err.message; }
+  };
+  $("#term").onclick = async () => {
+    if (!confirm("Terminate this workflow?")) return;
+    try {
+      await api(`/api/workflows/${id.split("/").map(encodeURIComponent).join("/")}/terminate`, {
+        method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({reason: "terminated from the UI"})});
+      route();
+    } catch (err) { $("#smsg").textContent = "error: " + err.message; }
+  };
+  if (d.status === "RUNNING") timer = setTimeout(() => { if (!document.activeElement || !["TEXTAREA", "INPUT"].includes(document.activeElement.tagName)) route(); else timer = setTimeout(route, 3000); }, 3000);
+}
+
+async function route() {
+  clearTimeout(timer);
+  const hash = location.hash.slice(1) || "/";
+  const [path, qs] = hash.split("?");
+  const params = new URLSearchParams(qs || "");
+  try {
+    if (path.startsWith("/wf/")) await renderDetail(decodeURIComponent(path.slice(4)), params.get("run"));
+    else await renderList(params);
+  } catch (err) {
+    $("#app").innerHTML = `<section class="panel"><p class="s-FAILED">${esc(err.message)}</p><a href="#/">back</a></section>`;
+  }
+}
+window.addEventListener("hashchange", route);
+route();
+</script>
+</body>
+</html>

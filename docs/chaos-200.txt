@@ -1,0 +1,15 @@
+chaos: 200 workflows, 4 workers, seed 7
+  real time 11.0s, virtual time 120.0 days, 32 time skips
+  workers SIGKILLed 7, self-crashed after a side effect 22
+  activity attempts 1360, retries 307, lease takeovers 23 activity / 1 workflow, fenced late reports 0
+  workflow tasks 1475, commands replayed from history 4209, signals sent 56
+
+invariants:
+  [PASS] every workflow completed or compensated: 247 workflows (incl. children): compensated 55, completed 192
+  [PASS] each activity scheduled once and resolved once: 1053 activities, 0 with a bad event count
+  [PASS] side effects applied at most once per successful attempt: 998 effects, 1360 attempts, 23 repeat calls absorbed by idempotency keys, 0 duplicates, 0 unreported effects undone by compensation, 0 unaccounted effects
+  [PASS] compensations ran for every step, in reverse order: 38 compensated workflows with side effects checked
+  [PASS] timers fired once, never early, in fire-time order: 175 fired (166 sleeps, 9 signal timeouts), 56 canceled, 0 early, 0 out of order, 0 lost
+  [PASS] histories contiguous and capped by continue-as-new: longest history 22 events (cap 60), 44 continue-as-new hand-offs, 0 runs with gaps
+
+ALL INVARIANTS HOLD
